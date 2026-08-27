@@ -25,9 +25,9 @@ export default function SmartMatches() {
     <div className="space-y-5">
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Smart Matches</h1>
-          <p className="text-sm text-muted">
-            Deterministic, explainable supply → demand recommendations, ranked 0-100%.
+          <h1 className="font-display text-2xl font-bold tracking-tight">FoodFlow found</h1>
+          <p className="text-sm text-ink/60">
+            Supply matched to nearby demand, scored 0-100% by the matching engine.
           </p>
         </div>
         {foodItem && (

@@ -21,6 +21,8 @@ import Home from "./pages/homes/Home";
 import ProducerDistribution from "./pages/homes/ProducerDistribution";
 import DemanderInventory from "./pages/homes/DemanderInventory";
 import DistributorMoves from "./pages/homes/DistributorMoves";
+import AvailableMoves from "./pages/homes/AvailableMoves";
+import FindDemand from "./pages/homes/FindDemand";
 
 // Mounted once for the whole "/app" tree so DemoGuide's step state
 // survives navigation between the role layout and the legacy full-nav
@@ -50,7 +52,7 @@ function Router() {
 
             {/* Producer */}
             <Route path="my-food" element={<Supply />} />
-            <Route path="find-demand" element={<SmartMatches />} />
+            <Route path="find-demand" element={<FindDemand />} />
             <Route path="distribution" element={<ProducerDistribution />} />
 
             {/* Demander */}
@@ -59,7 +61,7 @@ function Router() {
             <Route path="my-inventory" element={<DemanderInventory />} />
 
             {/* Distributor */}
-            <Route path="available-moves" element={<SmartMatches />} />
+            <Route path="available-moves" element={<AvailableMoves />} />
             <Route path="my-moves" element={<DistributorMoves />} />
             <Route path="network" element={<MapView />} />
           </Route>

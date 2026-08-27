@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 import { useApp } from "../context/AppContext";
 import FoodCard from "../components/FoodCard";
+import SupplyListingDetail from "../components/SupplyListingDetail";
 import { haversineKm } from "../utils/geo";
 
 const OWNER_TYPES = ["all", "farmer", "producer", "supplier", "distributor", "market"];
 
 export default function LocalFood() {
   const { currentUser, refreshKey } = useApp();
-  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [foodFilter, setFoodFilter] = useState("all");
   const [ownerType, setOwnerType] = useState("all");
@@ -17,9 +16,14 @@ export default function LocalFood() {
   const [freshnessFilter, setFreshnessFilter] = useState("all");
   const [selected, setSelected] = useState(null);
 
-  useEffect(() => {
-    api.getInventory().then((rows) => setItems(rows.filter((r) => r.quantity > 0))).catch(console.error);
-  }, [refreshKey]);
+  const load = () =>
+    api.getInventory()
+      // Only show listings with stock that isn't already fully reserved,
+      // and never the viewer's own listings.
+      .then((rows) => setItems(rows.filter((r) => r.available_qty > 0 && r.owner_id !== currentUser?.id)))
+      .catch(console.error);
+
+  useEffect(() => { load(); }, [refreshKey, currentUser]);
 
   const withDistance = useMemo(() => {
     return items.map((i) => ({
@@ -43,8 +47,10 @@ export default function LocalFood() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">Local Food</h1>
-        <p className="text-sm text-muted">Discover what's available across the Millbrook network right now.</p>
+        <h1 className="font-display text-2xl font-bold tracking-tight">Find Food</h1>
+        <p className="text-sm text-ink/60">
+          Food available near you right now. Open a listing to request the quantity you need.
+        </p>
       </div>
 
       <div className="card flex flex-wrap items-center gap-3 p-3">
@@ -76,27 +82,12 @@ export default function LocalFood() {
       </div>
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4" onClick={() => setSelected(null)}>
-          <div className="card w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between">
-              <h3 className="text-lg font-bold">{selected.food_item}</h3>
-              <button onClick={() => setSelected(null)} className="text-muted hover:text-ink">✕</button>
-            </div>
-            <p className="mt-1 text-sm text-muted">{selected.owner_name} · {selected.location_name}</p>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-              <div>Quantity: <strong>{selected.quantity} {selected.unit}</strong></div>
-              <div>Risk: <strong>{selected.waste_risk}</strong></div>
-              <div>Shelf life left: <strong>{selected.time_remaining_label}</strong></div>
-              <div>Distance: <strong>{selected.distance != null ? selected.distance.toFixed(1) + " km" : "-"}</strong></div>
-            </div>
-            <button
-              className="btn-primary mt-4 w-full"
-              onClick={() => navigate(`/app/matches?food_item=${encodeURIComponent(selected.food_item)}`)}
-            >
-              See Smart Matches for this item
-            </button>
-          </div>
-        </div>
+        <SupplyListingDetail
+          item={selected}
+          distanceKm={selected.distance}
+          onClose={() => setSelected(null)}
+          onRequested={load}
+        />
       )}
     </div>
   );

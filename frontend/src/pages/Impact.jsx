@@ -14,7 +14,7 @@ export default function Impact() {
 
   const chartData = [
     { name: "Available", value: impact.food_available_today, color: "#12181a" },
-    { name: "Allocated", value: impact.food_allocated, color: "#2f7d3f" },
+    { name: "Delivered", value: impact.food_allocated, color: "#2f7d3f" },
     { name: "Rescued", value: impact.food_rescued, color: "#4d9d5c" },
     { name: "At Risk", value: impact.at_risk_of_waste, color: "#c1841c" },
     { name: "Unmet", value: impact.unmet_demand, color: "#ab2626" },
@@ -25,13 +25,20 @@ export default function Impact() {
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight">Impact</h1>
         <p className="text-sm text-muted">
-          Every figure below is derived from accepted allocations and live inventory/demand — not simulated counters.
+          Every figure below is derived from completed deliveries and live inventory/demand — not simulated
+          counters. Food only counts as delivered once a distributor has actually moved it.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatTile label="Food Redistributed" value={`${impact.food_redistributed} kg`} tone="brand" />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <StatTile label="Food Delivered" value={`${impact.food_redistributed} kg`} tone="brand" />
         <StatTile label="Food Rescued" value={`${impact.food_rescued} kg`} tone="brand" />
+        <StatTile
+          label="In Transit"
+          value={`${impact.food_in_transit} kg`}
+          sub={`${impact.transactions_in_progress} in progress`}
+          tone="amber"
+        />
         <StatTile label="Distance Avoided" value={`${impact.distance_avoided_km} km`} sub="estimate" />
         <StatTile label="Est. CO2 Avoided" value={`${impact.co2_avoided_kg} kg`} sub="estimate" tone="brand" />
       </div>
@@ -59,11 +66,13 @@ export default function Impact() {
           <dl className="mt-3 divide-y divide-line text-sm">
             {[
               ["Available today", `${impact.food_available_today} kg`],
-              ["Allocated", `${impact.food_allocated} kg`],
+              ["Delivered", `${impact.food_allocated} kg`],
+              ["In transit", `${impact.food_in_transit} kg`],
               ["At risk of waste", `${impact.at_risk_of_waste} kg`],
               ["Unmet demand", `${impact.unmet_demand} kg`],
               ["Food rescued", `${impact.food_rescued} kg`],
-              ["Accepted allocations", impact.allocation_count],
+              ["Completed deliveries", impact.allocation_count],
+              ["Transactions in progress", impact.transactions_in_progress],
             ].map(([label, value]) => (
               <div key={label} className="flex items-center justify-between py-2">
                 <dt className="text-muted">{label}</dt>

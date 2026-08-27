@@ -2,11 +2,13 @@ import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useApp, getWorld, WORLD_NAV, ROLE_LABELS } from "../context/AppContext";
 import DemoControls from "./DemoControls";
+import ProfileCard from "./ProfileCard";
 
 export default function RoleTopBar() {
   const { currentUser, setCurrentUser } = useApp();
   const navigate = useNavigate();
   const [demoOpen, setDemoOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const world = currentUser ? getWorld(currentUser.role) : null;
   const nav = world ? WORLD_NAV[world] : [];
 
@@ -54,14 +56,24 @@ export default function RoleTopBar() {
             Demo controls
           </button>
           {currentUser && (
-            <button
-              onClick={switchRole}
-              className="flex items-center gap-2 rounded border border-line bg-paper px-2.5 py-1.5 text-xs font-medium hover:bg-line/40"
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
-              {currentUser.name}
-              <span className="text-muted">· {ROLE_LABELS[currentUser.role] || currentUser.role}</span>
-            </button>
+            <div className="flex items-center rounded border border-line bg-paper">
+              <button
+                onClick={() => setProfileOpen(true)}
+                className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-medium hover:bg-line/40"
+                title="View my profile"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
+                {currentUser.name}
+                <span className="text-muted">· {ROLE_LABELS[currentUser.role] || currentUser.role}</span>
+              </button>
+              <button
+                onClick={switchRole}
+                className="border-l border-line px-2 py-1.5 text-xs text-muted hover:bg-line/40 hover:text-ink"
+                title="Switch role"
+              >
+                ⇄
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -85,6 +97,9 @@ export default function RoleTopBar() {
       </nav>
 
       {demoOpen && <DemoControls onClose={() => setDemoOpen(false)} />}
+      {profileOpen && currentUser && (
+        <ProfileCard userId={currentUser.id} onClose={() => setProfileOpen(false)} />
+      )}
     </header>
   );
 }

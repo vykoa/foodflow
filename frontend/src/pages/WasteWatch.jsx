@@ -17,7 +17,7 @@ function RescueClock({ item }) {
       <div className="flex items-start justify-between">
         <div>
           <div className="text-base font-bold">{item.food_item}</div>
-          <div className="text-xs text-muted">{item.owner_name} · {item.quantity} {item.unit}</div>
+          <div className="text-xs text-muted">{item.owner_name} · {item.available_qty} {item.unit}</div>
         </div>
         <RiskBadge level={item.waste_risk} />
       </div>
@@ -42,7 +42,9 @@ export default function WasteWatch() {
     setBusyId(matchId);
     setError(null);
     try {
-      await api.acceptMatch(matchId);
+      // Opens a transaction (reserves the food); a distributor still has
+      // to move it before it counts as rescued.
+      await api.acceptMatch(matchId, null, "producer");
       bump();
       load();
     } catch (e) {
@@ -79,7 +81,7 @@ export default function WasteWatch() {
               <div className="flex items-center justify-between">
                 <div>
                   <span className="font-bold">{item.food_item}</span>
-                  <span className="ml-2 text-sm text-muted">{item.quantity} {item.unit} · {item.time_remaining_label} remaining</span>
+                  <span className="ml-2 text-sm text-muted">{item.available_qty} {item.unit} · {item.time_remaining_label} remaining</span>
                 </div>
                 <RiskBadge level={item.waste_risk} />
               </div>
@@ -98,7 +100,7 @@ export default function WasteWatch() {
                         onClick={() => rescue(d.id)}
                         className="btn-danger-outline"
                       >
-                        {busyId === d.id ? "Rescuing…" : "Rescue Food"}
+                        {busyId === d.id ? "Reserving…" : "Send here"}
                       </button>
                     </div>
                   ))}

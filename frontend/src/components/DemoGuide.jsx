@@ -3,76 +3,90 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 import { useApp } from "../context/AppContext";
 
+// Walks one real food order end-to-end: producer -> buyer -> distributor
+// -> fulfilled. Every step drives the real API against the real database.
 const STEPS = [
   {
-    title: "1. Local supply",
-    body: "Producers and suppliers across Millbrook list what's available right now.",
-    to: "/app/local-food",
+    title: "1. A producer has food",
+    body: "Green Valley Farm is holding 500 kg of tomatoes with 48 hours of shelf life left.",
+    to: "/app/home",
+    as: "farmer",
   },
   {
-    title: "2. Local demand",
-    body: "Schools, kitchens, markets and households post what they need.",
-    to: "/app/demand",
+    title: "2. Who needs it?",
+    body: "FoodFlow scans nearby demand for every item this farm holds, and ranks the buyers.",
+    to: "/app/find-demand",
   },
   {
-    title: "3. Imbalance",
-    body: "FOODFLOW SIGNALS surfaces surplus that has no buyer yet, and shortages nobody has covered.",
-    to: "/app/overview",
+    title: "3. A buyer needs tomatoes",
+    body: "Lakeside Elementary needs 150 kg, tomorrow, at HIGH priority. Switching to their view.",
+    to: "/app/home",
+    as: "school",
   },
   {
-    title: "4. Expiry risk",
-    body: "WASTE WATCH ranks inventory by how soon it will spoil, with a live rescue clock.",
-    to: "/app/waste-watch",
+    title: "4. Find it nearby",
+    body: "The school browses local food. Each listing shows distance, freshness and waste risk.",
+    to: "/app/find-food",
   },
   {
-    title: "5. Smart matches",
-    body: "The deterministic matching engine ranks every viable supply → demand pair, 0-100%.",
-    to: "/app/matches",
-  },
-  {
-    title: "6. Accept an allocation",
-    body: "Accepting the top-ranked match moves real inventory and demand in the database.",
-    to: "/app/matches",
+    title: "5. Request only what's needed",
+    body: "The school requests 100 kg of the 500 kg listing. The rest stays available to others.",
+    to: "/app/find-food",
     action: async () => {
-      const matches = await api.getMatches({ top_n: 1 });
-      if (matches[0]) await api.acceptMatch(matches[0].id);
+      const inv = await api.getInventory();
+      const listing = inv.find(
+        (i) => i.food_item === "Tomatoes" && i.owner_name === "Green Valley Farm" && i.available_qty >= 100
+      );
+      const demands = await api.getDemand();
+      const need = demands.find(
+        (d) => d.food_item === "Tomatoes" && d.requester_name === "Lakeside Elementary" && d.status === "open"
+      );
+      if (listing && need) {
+        await api.requestSupply({ inventory_id: listing.id, demand_id: need.id, quantity: 100 });
+      }
     },
   },
   {
-    title: "7. Inventory & demand update",
-    body: "The supplied quantity is gone from inventory; the buyer's shortage just shrank.",
+    title: "6. 100 kg is now reserved",
+    body: "The farm's listing shows 400 kg available and 100 kg reserved. Nothing has physically moved yet.",
+    to: "/app/home",
+    as: "farmer",
+  },
+  {
+    title: "7. A delivery opportunity appears",
+    body: "Distributors see the movement waiting to be picked up — filtered to what their vehicle can carry.",
+    to: "/app/home",
+    as: "distributor",
+  },
+  {
+    title: "8. The distributor accepts",
+    body: "Accepting assigns the move and advances the transaction to 'Distributor assigned'.",
+    to: "/app/available-moves",
+  },
+  {
+    title: "9. Picked up, then delivered",
+    body: "Marking delivered is the only moment stock actually leaves the farm and reaches the school.",
+    to: "/app/my-moves",
+  },
+  {
+    title: "10. Inventory and demand update",
+    body: "The farm drops to 400 kg; the school's outstanding need falls by 100 kg. One shared state.",
     to: "/app/inventory",
   },
   {
-    title: "8. Waste risk falls",
-    body: "That item drops off (or down) the Waste Watch list immediately.",
-    to: "/app/waste-watch",
-  },
-  {
-    title: "9. Impact rises",
-    body: "Food redistributed, food rescued and CO2 avoided all update from real allocation events.",
+    title: "11. Impact rises",
+    body: "Delivered food, rescued food and CO₂ avoided all move — derived only from completed deliveries.",
     to: "/app/impact",
   },
   {
-    title: "10. Supply shock",
-    body: "A major supplier just went offline. Watch what happens to affected demand.",
-    to: "/app/matches",
-    action: async () => api.runScenario("supply_shock"),
-  },
-  {
-    title: "11. Recalculate",
-    body: "The matching engine re-ranks instantly, using only suppliers still online.",
-    to: "/app/matches",
-  },
-  {
-    title: "12. Alternative allocation",
-    body: "A different supplier now ranks highest for the same demand. Explainable, every time.",
-    to: "/app/matches",
+    title: "12. Waste drives priority",
+    body: "Food near expiry is flagged as rescue priority, pushing it up the recommendation order.",
+    to: "/app/waste-watch",
   },
 ];
 
 export default function DemoGuide() {
-  const { setDemoMode, bump } = useApp();
+  const { setDemoMode, bump, setCurrentUser } = useApp();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -87,6 +101,11 @@ export default function DemoGuide() {
       bump();
       if (step + 1 < STEPS.length) {
         const next = STEPS[step + 1];
+        // Some steps change whose eyes you're seeing the network through.
+        if (next.as) {
+          const users = await api.getUsers(next.as);
+          if (users.length) setCurrentUser(users[0]);
+        }
         navigate(next.to);
         setStep(step + 1);
       } else {
@@ -98,7 +117,7 @@ export default function DemoGuide() {
   };
 
   return (
-    <div className="fixed bottom-5 right-5 z-40 w-80 card p-4">
+    <div className="panel fixed bottom-5 right-5 z-40 w-80 p-4 shadow-lg">
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-bold uppercase tracking-wide text-brand-600">
           Demo · step {step + 1}/{STEPS.length}

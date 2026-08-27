@@ -10,13 +10,17 @@ Built for the Millbrook local food network: 5 producers, 2 distributors, 2 schoo
 community kitchen, 2 markets, several households and a small business, all sharing one
 database, one matching engine, and one set of live metrics.
 
-**Entry experience (Iteration 1):** the app now opens onto three large choices — **I Have
-Food** (farmer/producer/supplier), **I Need Food** (school/kitchen/market/household/small
+**Entry experience:** the app opens onto three large choices — **I Have Food**
+(farmer/producer/supplier), **I Need Food** (school/kitchen/market/household/small
 business), **I Move Food** (distributor) — instead of a wall of role cards. Each world gets
 its own small nav and its own genuinely different home dashboard (see "The three worlds"
 below). The original 9-tab dashboard still exists in full and is one click away via
 **"Explore full network"**, and all simulation/what-if controls live behind a discreet
 **Demo Controls** panel rather than sitting in the main view.
+
+**The transaction chain:** producer → food → buyer demand → distribution capacity →
+fulfilment is one connected pipeline you can follow end-to-end (see "The transaction
+pipeline" below). A buyer can take *part* of a listing; the rest stays available to others.
 
 ---
 
@@ -140,6 +144,36 @@ The match/allocation action button's wording also follows the viewer's world
 (`ACTION_LABELS`): a producer sees "Accept allocation", a demander sees "Request supply", a
 distributor sees "Accept delivery" — same endpoint, human-appropriate verb.
 
+### The transaction pipeline
+
+`backend/services/transactions.py` — a row in the `allocations` table *is* a transaction:
+one reserved quantity of one inventory item, moving from a producer to a buyer via a
+distributor. It advances through four states, shown in the UI in plain language:
+
+| State | Shown as | What it means |
+|---|---|---|
+| `distributor_needed` | Awaiting distribution | Buyer requested it; stock is **reserved**, not moved |
+| `distributor_assigned` | Distributor assigned | A distributor accepted the move |
+| `picked_up` | Picked up | Collected from the producer |
+| `delivered` | Delivered | **Only now** does stock leave and demand fall |
+
+The key rule: **quantity is reserved, not deducted, until delivery.** `available_quantity()`
+(raw stock − reservations) is what the marketplace, matching engine and waste engine all
+treat as "free to request", so two buyers can't claim the same 100 kg. A buyer can request
+*part* of a listing — request 100 kg of a 500 kg listing and the producer sees
+`400 available / 100 reserved`, with the other 400 kg still offered to everyone else.
+`Impact` counts only delivered food; in-flight volume is reported separately as *in transit*.
+
+Every transaction has a five-stage progress indicator (Request → Match → Distributor →
+Pickup → Delivered), rendered by `components/TransactionProgress.jsx` — vertically in the
+transaction detail view, and as compact dots inline in list rows. All three roles watch the
+same transaction from their own angle: the producer sees "food on its way out", the buyer
+sees "food on its way to you", the distributor sees it as a delivery to run.
+
+Distributors carry a simple capacity profile (`users.vehicle_type / capacity_kg /
+service_area_km`) and only see moves they can actually support; the assign endpoint enforces
+it server-side too, so a 300 kg move is refused for a 150 kg van with a readable reason.
+
 ### The matching engine
 
 `backend/services/matching.py` — scores every open demand against every available inventory
@@ -160,6 +194,11 @@ they're trivial to retune. `explain_match()` turns the same numbers used for sco
 the bullet list shown behind **"Why this match?"** in the UI. A pair is only ever generated
 between two different organisations — `compute_matches` and `rank_destinations_for_inventory`
 both exclude a demand row from matching against inventory owned by that same requester.
+
+**Prefer local:** when several suppliers score within 8 points of each other for the same
+demand, the nearest of them is flagged as *preferred* and explains itself ("nearby source
+reduces unnecessary transport"). This never overrides the score — a clearly better distant
+supplier still wins; proximity only breaks a genuinely close call.
 
 ### The waste engine
 
@@ -189,21 +228,28 @@ baseline.
 `GET/POST /api/inventory`, `GET/POST /api/demand` (+ `PUT`/`DELETE` on both), `GET
 /api/matches`, `POST /api/matches/{id}/accept|reject`, `GET /api/waste-risk`, `GET
 /api/forecast/{entity}`, `GET /api/impact`, `GET /api/signals`, `GET /api/events`, `GET
-/api/locations`, `GET /api/users`, `GET /api/state`, `POST /api/simulation/clock`, `POST
-/api/simulation/{scenario}`, `POST /api/reset`.
+/api/locations`, `GET /api/users`, `GET /api/users/{id}/profile`, `GET /api/state`, `POST
+/api/simulation/clock`, `POST /api/simulation/{scenario}`, `POST /api/reset`.
+
+Transactions: `GET /api/transactions` (filter by `status`, `producer_id`, `buyer_id`,
+`distributor_id`, `unassigned_only`), `GET /api/transactions/{id}`, `POST /api/transactions`
+(request a quantity from a listing), and `POST /api/transactions/{id}/assign|decline|pickup|deliver`.
 
 ## Demo script (also built into "Start Demo")
 
-1. **Local Food** — browse what's available across the network right now.
-2. **Demand** — see open shortages across schools, kitchens, markets, households.
-3. **Overview → FOODFLOW Signals** — surplus (potatoes, rice, lentils) sitting next to
-   real shortages (tomatoes) nobody has covered.
-4. **Waste Watch** — Sunrise Orchards' 150kg of bananas, 18 hours from spoiling.
-5. **Smart Matches** — ranked, explainable supply → demand recommendations.
-6. **Accept** the top match — inventory, demand, activity feed and Impact all update live.
-7. **What If? → Supply Shock** — Metro Foods Supply goes offline; matches recalculate
-   instantly around it.
-8. **-6H / +12H** — advance the simulation clock and watch waste risk change in real time.
+Follow one food order from farm to school:
 
-Every step above uses the real database through the real API — nothing on screen is a
-static mock.
+1. **A producer has food** — Green Valley Farm holds 500 kg of tomatoes, 48 h shelf life.
+2. **Find Demand** — FoodFlow ranks who nearby needs it, and how urgently.
+3. **A buyer needs it** — Lakeside Elementary needs 150 kg tomorrow, HIGH priority.
+4. **Find Food** — the school browses listings by distance, freshness and waste risk.
+5. **Request part of a listing** — the school takes 100 kg of the 500 kg; the rest stays open.
+6. **Reserved, not moved** — the farm now shows *400 available / 100 reserved*.
+7. **A delivery appears** — distributors see the move, filtered to their vehicle capacity.
+8. **Accept delivery** — the transaction advances to *Distributor assigned*.
+9. **Pick up → deliver** — only at delivery does stock leave the farm and reach the school.
+10. **Inventory and demand update** — farm 500 → 400 kg; school's shortage 150 → 50 kg.
+11. **Impact rises** — delivered, rescued and CO₂ avoided all move.
+12. **Waste drives priority** — near-expiry food is flagged as rescue priority throughout.
+
+Every step uses the real database through the real API — nothing on screen is a static mock.

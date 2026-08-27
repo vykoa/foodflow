@@ -27,6 +27,7 @@ export const api = {
   // reference data
   getLocations: () => request("/api/locations"),
   getUsers: (role) => request(`/api/users${role ? `?role=${encodeURIComponent(role)}` : ""}`),
+  getProfile: (userId) => request(`/api/users/${userId}/profile`),
 
   // inventory
   getInventory: (ownerId) => request(`/api/inventory${ownerId ? `?owner_id=${ownerId}` : ""}`),
@@ -45,9 +46,25 @@ export const api = {
     const qs = new URLSearchParams(params).toString();
     return request(`/api/matches${qs ? `?${qs}` : ""}`);
   },
-  acceptMatch: (id, quantity) =>
-    request(`/api/matches/${id}/accept`, { method: "POST", body: JSON.stringify(quantity ? { quantity } : {}) }),
+  acceptMatch: (id, quantity, initiatedBy) =>
+    request(`/api/matches/${id}/accept`, {
+      method: "POST",
+      body: JSON.stringify({ ...(quantity ? { quantity } : {}), ...(initiatedBy ? { initiated_by: initiatedBy } : {}) }),
+    }),
   rejectMatch: (id) => request(`/api/matches/${id}/reject`, { method: "POST" }),
+
+  // transactions - the producer -> buyer -> distributor -> fulfilled chain
+  getTransactions: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/api/transactions${qs ? `?${qs}` : ""}`);
+  },
+  getTransaction: (id) => request(`/api/transactions/${id}`),
+  requestSupply: (body) => request("/api/transactions", { method: "POST", body: JSON.stringify(body) }),
+  assignDistributor: (id, distributorId) =>
+    request(`/api/transactions/${id}/assign`, { method: "POST", body: JSON.stringify({ distributor_id: distributorId }) }),
+  declineTransaction: (id) => request(`/api/transactions/${id}/decline`, { method: "POST" }),
+  pickupTransaction: (id) => request(`/api/transactions/${id}/pickup`, { method: "POST" }),
+  deliverTransaction: (id) => request(`/api/transactions/${id}/deliver`, { method: "POST" }),
 
   // waste / forecast / impact / signals
   getWasteRisk: () => request("/api/waste-risk"),

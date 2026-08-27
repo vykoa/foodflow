@@ -47,6 +47,19 @@ class DemandUpdate(BaseModel):
 
 class AcceptMatchBody(BaseModel):
     quantity: Optional[float] = Field(default=None, gt=0)
+    initiated_by: Optional[str] = None
+
+
+class RequestSupplyBody(BaseModel):
+    """A buyer requesting a specific quantity straight from a listing."""
+    inventory_id: int
+    demand_id: int
+    quantity: float = Field(gt=0)
+    initiated_by: Optional[str] = None
+
+
+class AssignDistributorBody(BaseModel):
+    distributor_id: int
 
 
 class ClockBody(BaseModel):

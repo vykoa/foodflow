@@ -25,7 +25,13 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     role TEXT NOT NULL,
-    location_id INTEGER REFERENCES locations(id)
+    location_id INTEGER REFERENCES locations(id),
+    -- Lightweight distribution-capacity profile (distributor role only).
+    -- Not sophisticated scheduling - just enough to make "a distributor
+    -- only sees moves it can support" believable.
+    vehicle_type TEXT,
+    capacity_kg REAL,
+    service_area_km REAL
 );
 
 CREATE TABLE IF NOT EXISTS inventory (
@@ -57,6 +63,17 @@ CREATE TABLE IF NOT EXISTS demand (
     status TEXT NOT NULL DEFAULT 'open'
 );
 
+-- A single row here IS a transaction: one reserved quantity of one
+-- inventory item, travelling from a producer to a buyer, optionally
+-- via a distributor. Table name kept as `allocations` for continuity
+-- with the existing services; the API layer exposes it as
+-- /api/transactions, which is the concept judges should see.
+--
+-- status lifecycle (see services/transactions.py):
+--   distributor_needed -> distributor_assigned -> picked_up -> delivered
+-- Quantity is only RESERVED (not physically subtracted from inventory)
+-- until 'delivered', at which point inventory.quantity and
+-- demand.quantity_received both update for real.
 CREATE TABLE IF NOT EXISTS allocations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     inventory_id INTEGER REFERENCES inventory(id),
@@ -68,8 +85,13 @@ CREATE TABLE IF NOT EXISTS allocations (
     rescued INTEGER NOT NULL DEFAULT 0,
     distance_avoided_km REAL NOT NULL DEFAULT 0,
     co2_avoided_kg REAL NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'accepted',
-    created_at TEXT NOT NULL
+    status TEXT NOT NULL DEFAULT 'distributor_needed',
+    distributor_id INTEGER REFERENCES users(id),
+    initiated_by TEXT NOT NULL DEFAULT 'buyer',
+    created_at TEXT NOT NULL,
+    assigned_at TEXT,
+    picked_up_at TEXT,
+    delivered_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS rejected_matches (

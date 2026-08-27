@@ -115,13 +115,16 @@ export default function Supply() {
           <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-muted">My Listings</h2>
           <div className="card overflow-x-auto">
             <table className="data-table">
-              <thead><tr><th>Food</th><th>Qty</th><th>Risk</th><th>Status</th><th></th></tr></thead>
+              <thead><tr><th>Food</th><th>Available</th><th>Reserved</th><th>Risk</th><th>Status</th><th></th></tr></thead>
               <tbody>
-                {mine.length === 0 && <tr><td colSpan={5} className="text-muted">No listings yet.</td></tr>}
+                {mine.length === 0 && <tr><td colSpan={6} className="text-muted">No listings yet.</td></tr>}
                 {mine.map((i) => (
                   <tr key={i.id}>
                     <td className="font-medium">{i.food_item}</td>
-                    <td>{i.quantity} {i.unit}</td>
+                    <td>{i.available_qty} {i.unit}</td>
+                    <td className={i.reserved_qty > 0 ? "font-medium text-amber-700" : "text-ink/40"}>
+                      {i.reserved_qty > 0 ? `${i.reserved_qty} ${i.unit}` : "—"}
+                    </td>
                     <td><RiskBadge level={i.waste_risk} /></td>
                     <td className="text-muted">{i.status}</td>
                     <td className="space-x-2 text-right">
@@ -140,13 +143,13 @@ export default function Supply() {
         <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-muted">Network Supply</h2>
         <div className="card overflow-x-auto">
           <table className="data-table">
-            <thead><tr><th>Food</th><th>Supplier</th><th>Qty</th><th>Risk</th><th>Freshness</th></tr></thead>
+            <thead><tr><th>Food</th><th>Supplier</th><th>Available</th><th>Risk</th><th>Freshness</th></tr></thead>
             <tbody>
               {network.map((i) => (
                 <tr key={i.id}>
                   <td className="font-medium">{i.food_item}</td>
                   <td>{i.owner_name}</td>
-                  <td>{i.quantity} {i.unit}</td>
+                  <td>{i.available_qty} {i.unit}</td>
                   <td><RiskBadge level={i.waste_risk} /></td>
                   <td className="text-muted">{i.time_remaining_label}</td>
                 </tr>

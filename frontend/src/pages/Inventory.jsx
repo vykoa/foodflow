@@ -47,7 +47,7 @@ export default function Inventory() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Food</th><th>Owner</th><th>Category</th><th>Quantity</th>
+              <th>Food</th><th>Owner</th><th>Category</th><th>Available</th><th>Reserved</th>
               <th>Time Remaining</th><th>Risk</th><th>Priority</th><th>Status</th>
             </tr>
           </thead>
@@ -57,7 +57,10 @@ export default function Inventory() {
                 <td className="font-medium">{i.food_item}</td>
                 <td>{i.owner_name}{i.is_offline ? " (offline)" : ""}</td>
                 <td className="text-muted">{i.category}</td>
-                <td>{i.quantity} {i.unit}</td>
+                <td>{i.available_qty} {i.unit}</td>
+                <td className={i.reserved_qty > 0 ? "font-medium text-amber-700" : "text-ink/40"}>
+                  {i.reserved_qty > 0 ? `${i.reserved_qty} ${i.unit}` : "—"}
+                </td>
                 <td className="font-mono text-xs">{i.time_remaining_label}</td>
                 <td><RiskBadge level={i.waste_risk} /></td>
                 <td className="text-muted">{i.priority}</td>

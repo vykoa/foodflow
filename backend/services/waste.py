@@ -47,7 +47,11 @@ def format_hours(hours_left: float) -> str:
 
 
 def get_inventory_with_risk(conn, owner_id=None, include_offline=False):
-    """Every inventory row annotated with waste-risk fields."""
+    """Every inventory row annotated with waste-risk and reservation fields."""
+    # Lazy import: services/transactions.py imports this module at load
+    # time, so this module must not import it back at load time too.
+    from services.transactions import reserved_quantity
+
     sim_now = get_sim_now(conn)
     disabled_owner = get_disabled_owner_id(conn)
     query = """
@@ -71,6 +75,9 @@ def get_inventory_with_risk(conn, owner_id=None, include_offline=False):
         d["time_remaining_label"] = format_hours(hl)
         d["waste_risk"] = risk_level(hl)
         d["is_offline"] = disabled_owner is not None and d["owner_id"] == disabled_owner
+        reserved = reserved_quantity(conn, d["id"])
+        d["reserved_qty"] = reserved
+        d["available_qty"] = max(round(d["quantity"] - reserved, 2), 0)
         if not include_offline and d["is_offline"]:
             continue
         result.append(d)
@@ -85,7 +92,7 @@ def get_waste_watch(conn, top_n_destinations=3):
     from services.matching import rank_destinations_for_inventory
 
     items = get_inventory_with_risk(conn)
-    at_risk = [i for i in items if i["waste_risk"] in ("CRITICAL", "HIGH") and i["quantity"] > 0]
+    at_risk = [i for i in items if i["waste_risk"] in ("CRITICAL", "HIGH") and i["available_qty"] > 0]
     at_risk.sort(key=lambda x: x["hours_remaining"])
 
     watch = []

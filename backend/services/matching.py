@@ -85,6 +85,11 @@ def estimate_transport(distance_km: float, quantity: float) -> dict:
 
 
 def _score_pair(conn, inventory_row, demand_row, sim_now, delayed_location_id):
+    # `available_qty` is what's actually free to request (raw quantity
+    # minus anything already reserved by another transaction). Fall
+    # back to raw quantity for callers that haven't attached it.
+    available_qty = inventory_row["available_qty"] if "available_qty" in inventory_row.keys() else inventory_row["quantity"]
+
     inv_loc = (inventory_row["lat"], inventory_row["lng"])
     dem_loc = (demand_row["lat"], demand_row["lng"])
     distance = haversine_km(inv_loc[0], inv_loc[1], dem_loc[0], dem_loc[1])
@@ -98,13 +103,13 @@ def _score_pair(conn, inventory_row, demand_row, sim_now, delayed_location_id):
     hours_left = hours_remaining(inventory_row["expiry_at"], sim_now)
     hours_until_needed = (datetime.fromisoformat(demand_row["needed_by"]) - sim_now).total_seconds() / 3600
     remaining_demand = max(demand_row["quantity"] - demand_row["quantity_received"], 0)
-    quantity = round(min(inventory_row["quantity"], remaining_demand), 1)
+    quantity = round(min(available_qty, remaining_demand), 1)
 
     components = {
         "urgency": score_urgency(hours_until_needed),
         "shelf_life": score_shelf_life(hours_left),
         "proximity": score_proximity(distance),
-        "quantity_fit": score_quantity_fit(inventory_row["quantity"], remaining_demand),
+        "quantity_fit": score_quantity_fit(available_qty, remaining_demand),
         "priority": score_priority(demand_row["priority"]),
         "transport_efficiency": score_transport_efficiency(distance, quantity),
     }
@@ -120,6 +125,7 @@ def _score_pair(conn, inventory_row, demand_row, sim_now, delayed_location_id):
         "supplier_location": inventory_row["location_name"],
         "requester_name": demand_row["requester_name"],
         "requester_location": demand_row["location_name"],
+        "available_qty": available_qty,
         "quantity": quantity,
         "distance_km": round(distance, 1),
         "delayed_route": delayed,
@@ -131,6 +137,20 @@ def _score_pair(conn, inventory_row, demand_row, sim_now, delayed_location_id):
         "weighted_breakdown": weighted,
         "transport": estimate_transport(distance, quantity),
     }
+
+
+def _attach_availability(conn, rows):
+    """Annotate raw inventory rows with `available_qty`, dropping any
+    that are fully reserved by other pending/in-flight transactions."""
+    from services.transactions import available_quantity  # avoid import cycle at module load
+
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["available_qty"] = available_quantity(conn, d)
+        if d["available_qty"] > 0:
+            out.append(d)
+    return out
 
 
 def _fetch_inventory(conn, food_item=None, exclude_owner_id=None):
@@ -148,7 +168,54 @@ def _fetch_inventory(conn, food_item=None, exclude_owner_id=None):
     if exclude_owner_id:
         q += " AND i.owner_id != ?"
         params.append(exclude_owner_id)
-    return conn.execute(q, params).fetchall()
+    rows = conn.execute(q, params).fetchall()
+    return _attach_availability(conn, rows)
+
+
+def get_inventory_for_scoring(conn, inventory_id):
+    row = conn.execute(
+        """
+        SELECT i.*, u.name AS owner_name, l.name AS location_name, l.lat AS lat, l.lng AS lng
+        FROM inventory i JOIN users u ON i.owner_id = u.id JOIN locations l ON i.location_id = l.id
+        WHERE i.id = ?
+        """,
+        (inventory_id,),
+    ).fetchone()
+    if not row:
+        return None
+    attached = _attach_availability(conn, [row])
+    if attached:
+        return attached[0]
+    # still return it (available_qty = 0) so callers can give a clear error
+    d = dict(row)
+    d["available_qty"] = 0
+    return d
+
+
+def get_demand_for_scoring(conn, demand_id):
+    row = conn.execute(
+        """
+        SELECT d.*, u.name AS requester_name, l.name AS location_name, l.lat AS lat, l.lng AS lng
+        FROM demand d JOIN users u ON d.requester_id = u.id JOIN locations l ON d.location_id = l.id
+        WHERE d.id = ?
+        """,
+        (demand_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def score_pair(conn, inventory_id, demand_id):
+    """Public entry point for scoring one specific inventory/demand pair
+    on demand (used when creating a transaction directly from a supply
+    listing, not just from the ranked match list)."""
+    from services.simulation import get_delayed_location_id as _get_delayed
+
+    inv = get_inventory_for_scoring(conn, inventory_id)
+    dem = get_demand_for_scoring(conn, demand_id)
+    if not inv or not dem:
+        return None
+    sim_now = get_sim_now(conn)
+    return _score_pair(conn, inv, dem, sim_now, _get_delayed(conn))
 
 
 def _fetch_demand(conn, food_item=None, demand_id=None):
@@ -167,6 +234,28 @@ def _fetch_demand(conn, food_item=None, demand_id=None):
         q += " AND d.id = ?"
         params.append(demand_id)
     return conn.execute(q, params).fetchall()
+
+
+def _annotate_local_preference(matches, group_key):
+    """PREFER LOCAL: when several candidates score within a few points of
+    each other, flag the nearest of them as the preferred one. This never
+    changes the ranking (the weighted score alone still decides order) -
+    it only explains, when true, that proximity broke a close call."""
+    groups = {}
+    for m in matches:
+        groups.setdefault(group_key(m), []).append(m)
+    preferred_ids = set()
+    for group in groups.values():
+        group.sort(key=lambda m: -m["match_score"])
+        top = group[0]
+        comparable = [m for m in group if top["match_score"] - m["match_score"] <= 8]
+        if len(comparable) > 1:
+            nearest = min(comparable, key=lambda m: m["distance_km"])
+            if nearest["id"] == top["id"]:
+                preferred_ids.add(top["id"])
+    for m in matches:
+        m["prefer_local"] = m["id"] in preferred_ids
+    return matches
 
 
 def _rejected_pairs(conn):
@@ -197,6 +286,7 @@ def compute_matches(conn, demand_id=None, food_item=None, top_n=20):
                 continue
             matches.append(_score_pair(conn, inv, dem, sim_now, delayed_location))
 
+    matches = _annotate_local_preference(matches, group_key=lambda m: m["demand_id"])
     matches.sort(key=lambda m: -m["match_score"])
     return matches[:top_n]
 
@@ -208,15 +298,8 @@ def rank_destinations_for_inventory(conn, inventory_id, top_n=3):
     delayed_location = get_delayed_location_id(conn)
     rejected = _rejected_pairs(conn)
 
-    inv = conn.execute(
-        """
-        SELECT i.*, u.name AS owner_name, l.name AS location_name, l.lat AS lat, l.lng AS lng
-        FROM inventory i JOIN users u ON i.owner_id = u.id JOIN locations l ON i.location_id = l.id
-        WHERE i.id = ?
-        """,
-        (inventory_id,),
-    ).fetchone()
-    if not inv:
+    inv = get_inventory_for_scoring(conn, inventory_id)
+    if not inv or inv["available_qty"] <= 0:
         return []
 
     demand_rows = _fetch_demand(conn, food_item=inv["food_item"])
@@ -227,6 +310,7 @@ def rank_destinations_for_inventory(conn, inventory_id, top_n=3):
         if (inv["id"], dem["id"]) in rejected:
             continue
         ranked.append(_score_pair(conn, inv, dem, sim_now, delayed_location))
+    ranked = _annotate_local_preference(ranked, group_key=lambda m: m["inventory_id"])
     ranked.sort(key=lambda m: -m["match_score"])
     return ranked[:top_n]
 
@@ -251,6 +335,8 @@ def explain_match(match: dict) -> list[str]:
         bullets.append("High-priority destination")
     if c["transport_efficiency"] >= 60:
         bullets.append("Efficient transport")
+    if match.get("prefer_local"):
+        bullets.append("Preferred: nearby source reduces unnecessary transport")
     if match.get("delayed_route"):
         bullets.append("Route currently delayed (what-if scenario active)")
     return bullets

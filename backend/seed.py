@@ -42,26 +42,32 @@ LOCATIONS = [
     ("Household - Oak Avenue", "household", 12.9805, 77.6020, "Oak Ave 22"),
     ("Household - Cedar Lane", "household", 12.9550, 77.5900, "Cedar Ln 6"),
     ("Millbrook Cafe", "business", 12.9740, 77.5970, "High St 3"),
+    ("Cedarline Transport", "distributor", 12.9660, 77.5920, "Depot Rd 4"),
 ]
 
-# name, role, location index (into LOCATIONS)
+# name, role, location index (into LOCATIONS), then the optional
+# distribution-capacity profile (vehicle, capacity kg, service area km).
+# Only distributors carry a capacity profile; everyone else has None.
 USERS = [
-    ("Green Valley Farm", "farmer", 0),
-    ("Sunrise Orchards", "farmer", 1),
-    ("Riverside Growers", "producer", 2),
-    ("Golden Fields Farm", "farmer", 3),
-    ("Blue Hill Produce", "producer", 4),
-    ("Metro Foods Supply", "supplier", 5),
-    ("Harborline Distribution", "distributor", 6),
-    ("Lakeside Elementary", "school", 7),
-    ("Northgate High", "school", 8),
-    ("Hope Community Kitchen", "kitchen", 9),
-    ("Central Market", "market", 10),
-    ("Riverside Market", "market", 11),
-    ("Household - Mill Street", "household", 12),
-    ("Household - Oak Avenue", "household", 13),
-    ("Household - Cedar Lane", "household", 14),
-    ("Millbrook Cafe", "business", 15),
+    ("Green Valley Farm", "farmer", 0, None, None, None),
+    ("Sunrise Orchards", "farmer", 1, None, None, None),
+    ("Riverside Growers", "producer", 2, None, None, None),
+    ("Golden Fields Farm", "farmer", 3, None, None, None),
+    ("Blue Hill Produce", "producer", 4, None, None, None),
+    ("Metro Foods Supply", "supplier", 5, None, None, None),
+    ("Harborline Distribution", "distributor", 6, "Light goods vehicle", 500, 10),
+    ("Lakeside Elementary", "school", 7, None, None, None),
+    ("Northgate High", "school", 8, None, None, None),
+    ("Hope Community Kitchen", "kitchen", 9, None, None, None),
+    ("Central Market", "market", 10, None, None, None),
+    ("Riverside Market", "market", 11, None, None, None),
+    ("Household - Mill Street", "household", 12, None, None, None),
+    ("Household - Oak Avenue", "household", 13, None, None, None),
+    ("Household - Cedar Lane", "household", 14, None, None, None),
+    ("Millbrook Cafe", "business", 15, None, None, None),
+    # A smaller second distributor, so capacity limits are visible in the
+    # demo: it cannot take the largest moves, which makes the constraint real.
+    ("Cedarline Transport", "distributor", 16, "Small van", 150, 6),
 ]
 
 # owner index (into USERS), food_item, category, quantity, unit, shelf_life_hours, priority
@@ -130,10 +136,11 @@ def run():
             location_ids.append(cur.lastrowid)
 
         user_ids = []
-        for name, role, loc_idx in USERS:
+        for name, role, loc_idx, vehicle, capacity, service_area in USERS:
             cur = conn.execute(
-                "INSERT INTO users (name, role, location_id) VALUES (?, ?, ?)",
-                (name, role, location_ids[loc_idx]),
+                """INSERT INTO users (name, role, location_id, vehicle_type, capacity_kg, service_area_km)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (name, role, location_ids[loc_idx], vehicle, capacity, service_area),
             )
             user_ids.append(cur.lastrowid)
 

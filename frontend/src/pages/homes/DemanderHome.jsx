@@ -3,24 +3,36 @@ import { Link } from "react-router-dom";
 import { api } from "../../services/api";
 import { useApp } from "../../context/AppContext";
 import PriorityPill from "../../components/PriorityPill";
+import TransactionList from "../../components/TransactionList";
+import TransactionDetail from "../../components/TransactionDetail";
 
 export default function DemanderHome() {
   const { currentUser, refreshKey } = useApp();
   const [demand, setDemand] = useState([]);
   const [matches, setMatches] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [openTx, setOpenTx] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!currentUser) return;
-    setLoading(true);
-    Promise.all([api.getDemand(currentUser.id), api.getMatches({ top_n: 40 })])
-      .then(([dem, allMatches]) => {
+  const load = () => {
+    if (!currentUser) return Promise.resolve();
+    return Promise.all([
+      api.getDemand(currentUser.id),
+      api.getMatches({ top_n: 40 }),
+      api.getTransactions({ buyer_id: currentUser.id }),
+    ])
+      .then(([dem, allMatches, txs]) => {
         setDemand(dem);
         const mine = new Set(dem.map((d) => d.id));
         setMatches(allMatches.filter((m) => mine.has(m.demand_id)));
+        setTransactions(txs);
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .catch(console.error);
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    load().finally(() => setLoading(false));
   }, [currentUser, refreshKey]);
 
   if (loading) return <p className="text-sm text-muted">Loading your food network…</p>;
@@ -28,6 +40,7 @@ export default function DemanderHome() {
   const openNeeds = demand.filter((d) => d.status === "open");
   const onHandQty = Math.round(demand.reduce((s, d) => s + d.quantity_received, 0));
   const nearbySupplyCount = matches.length;
+  const incoming = transactions.filter((t) => t.status !== "delivered");
 
   // Group best match per food item, pick the single strongest recommendation.
   const byFood = {};
@@ -80,6 +93,16 @@ export default function DemanderHome() {
       </section>
 
       <section>
+        <h2 className="text-xs font-bold uppercase tracking-widest text-ink/50">Food on its way to you</h2>
+        <TransactionList
+          transactions={incoming}
+          perspective="buyer"
+          onOpen={setOpenTx}
+          emptyText="Nothing incoming yet. Request supply from a nearby listing under Find Food."
+        />
+      </section>
+
+      <section>
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-bold uppercase tracking-widest text-ink/50">My Needs</h2>
           <Link to="/app/my-needs" className="text-xs font-semibold text-brand-600 hover:underline">Manage needs →</Link>
@@ -111,6 +134,10 @@ export default function DemanderHome() {
           {onHandQty} kg received so far against {Math.round(demand.reduce((s, d) => s + d.quantity, 0))} kg requested.
         </p>
       </section>
+
+      {openTx && (
+        <TransactionDetail transactionId={openTx} onClose={() => setOpenTx(null)} onChanged={load} />
+      )}
     </div>
   );
 }

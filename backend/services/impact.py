@@ -1,8 +1,11 @@
 """
 Impact / sustainability engine. Every number here is derived from real
-rows in the `allocations` table (created only when a user accepts a
-recommended match) plus a live snapshot of current inventory/demand -
-nothing is a fake incrementing counter.
+rows in the `allocations` table plus a live snapshot of current
+inventory/demand - nothing is a fake incrementing counter.
+
+Only DELIVERED transactions count toward redistributed/rescued/CO2:
+food that is merely reserved or in transit hasn't arrived anywhere yet.
+In-flight volume is reported separately as `food_in_transit`.
 """
 from services.waste import get_inventory_with_risk
 
@@ -16,7 +19,14 @@ def get_impact(conn) -> dict:
             COALESCE(SUM(distance_avoided_km), 0) AS distance_avoided,
             COALESCE(SUM(co2_avoided_kg), 0) AS co2_avoided,
             COUNT(*) AS allocation_count
-        FROM allocations WHERE status = 'accepted'
+        FROM allocations WHERE status = 'delivered'
+        """
+    ).fetchone()
+
+    in_flight = conn.execute(
+        """
+        SELECT COALESCE(SUM(quantity), 0) AS q, COUNT(*) AS n
+        FROM allocations WHERE status != 'delivered'
         """
     ).fetchone()
 
@@ -24,20 +34,20 @@ def get_impact(conn) -> dict:
         "SELECT COALESCE(SUM(quantity), 0) AS q FROM inventory WHERE status = 'available'"
     ).fetchone()["q"]
 
-    allocated_total = totals["redistributed"]
-
     unmet_demand = conn.execute(
         "SELECT COALESCE(SUM(quantity - quantity_received), 0) AS q FROM demand WHERE status = 'open'"
     ).fetchone()["q"]
 
     at_risk_items = [i for i in get_inventory_with_risk(conn) if i["waste_risk"] in ("CRITICAL", "HIGH")]
-    at_risk_qty = sum(i["quantity"] for i in at_risk_items)
+    at_risk_qty = sum(i["available_qty"] for i in at_risk_items)
 
     return {
         "food_available_today": round(available_today, 1),
-        "food_allocated": round(allocated_total, 1),
+        "food_allocated": round(totals["redistributed"], 1),
         "food_redistributed": round(totals["redistributed"], 1),
         "food_rescued": round(totals["rescued"], 1),
+        "food_in_transit": round(in_flight["q"], 1),
+        "transactions_in_progress": in_flight["n"],
         "distance_avoided_km": round(totals["distance_avoided"], 1),
         "co2_avoided_kg": round(totals["co2_avoided"], 1),
         "unmet_demand": round(unmet_demand, 1),

@@ -6,16 +6,23 @@ from services.simulation import get_disabled_owner_id
 
 
 def get_signals(conn) -> dict:
+    # Lazy import to avoid a load-time cycle with the transaction service.
+    from services.transactions import reserved_quantity
+
     disabled_owner = get_disabled_owner_id(conn)
 
     supply_rows = conn.execute(
-        "SELECT food_item, owner_id, quantity FROM inventory WHERE status = 'available' AND quantity > 0"
+        "SELECT id, food_item, owner_id, quantity FROM inventory WHERE status = 'available' AND quantity > 0"
     ).fetchall()
     supply_by_item = {}
     for r in supply_rows:
         if disabled_owner and r["owner_id"] == disabled_owner:
             continue
-        supply_by_item[r["food_item"]] = supply_by_item.get(r["food_item"], 0) + r["quantity"]
+        # Only unreserved stock counts as surplus looking for a home.
+        free = max(r["quantity"] - reserved_quantity(conn, r["id"]), 0)
+        if free <= 0:
+            continue
+        supply_by_item[r["food_item"]] = supply_by_item.get(r["food_item"], 0) + free
 
     demand_rows = conn.execute(
         "SELECT food_item, quantity, quantity_received FROM demand WHERE status = 'open'"
