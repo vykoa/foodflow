@@ -3,7 +3,7 @@ import RiskBadge from "./RiskBadge";
 import PriorityPill from "./PriorityPill";
 import WhyMatchModal from "./WhyMatchModal";
 import { api } from "../services/api";
-import { useApp } from "../context/AppContext";
+import { useApp, getWorld, ACTION_LABELS } from "../context/AppContext";
 
 function scoreTone(score) {
   if (score >= 80) return "text-brand-600";
@@ -12,10 +12,17 @@ function scoreTone(score) {
 }
 
 export default function MatchCard({ match, onResolved }) {
-  const { bump } = useApp();
+  const { bump, currentUser } = useApp();
   const [showWhy, setShowWhy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+
+  // The verb on the action button depends on who's looking - a
+  // producer "accepts an allocation", a demander "requests supply", a
+  // distributor "accepts a delivery". Falls back to generic wording
+  // when viewed outside a role context (e.g. Explore Network).
+  const world = currentUser ? getWorld(currentUser.role) : null;
+  const labels = ACTION_LABELS[world] || { accept: "Accept", reject: "Reject" };
 
   const act = async (action) => {
     setBusy(true);
@@ -76,10 +83,10 @@ export default function MatchCard({ match, onResolved }) {
 
       <div className="mt-3 flex items-center gap-2">
         <button disabled={busy} onClick={() => act("accept")} className="btn-primary flex-1">
-          Accept
+          {busy ? "Working…" : labels.accept}
         </button>
         <button disabled={busy} onClick={() => act("reject")} className="btn-secondary flex-1">
-          Reject
+          {labels.reject}
         </button>
         <button onClick={() => setShowWhy(true)} className="btn-secondary whitespace-nowrap">
           Why this match?

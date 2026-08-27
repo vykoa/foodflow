@@ -42,8 +42,12 @@ export default {
         },
       },
       fontFamily: {
-        sans: ["Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
-        mono: ["JetBrains Mono", "SFMono-Regular", "Menlo", "monospace"],
+        // System stacks only - no external font loading.
+        sans: ["-apple-system", "BlinkMacSystemFont", "Segoe UI", "Helvetica Neue", "Arial", "sans-serif"],
+        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
+        // Used sparingly for headlines to read as civic/editorial rather
+        // than generic SaaS-sans-everywhere.
+        display: ["ui-serif", "Georgia", "Iowan Old Style", "Times New Roman", "serif"],
       },
       boxShadow: {
         card: "0 1px 2px rgba(18,24,26,0.06), 0 1px 1px rgba(18,24,26,0.04)",

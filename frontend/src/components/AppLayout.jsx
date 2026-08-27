@@ -1,11 +1,10 @@
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
-import DemoGuide from "./DemoGuide";
-import { useApp } from "../context/AppContext";
 
+// DemoGuide is mounted once, above both this layout and RoleLayout
+// (see App.jsx), so its step state survives switching between them.
 export default function AppLayout() {
-  const { demoMode } = useApp();
   return (
     <div className="flex h-screen w-full overflow-hidden bg-paper text-ink">
       <Sidebar />
@@ -17,7 +16,6 @@ export default function AppLayout() {
           </div>
         </main>
       </div>
-      {demoMode && <DemoGuide />}
     </div>
   );
 }

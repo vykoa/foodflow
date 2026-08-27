@@ -184,7 +184,9 @@ def compute_matches(conn, demand_id=None, food_item=None, top_n=20):
     demand_rows = _fetch_demand(conn, food_item=food_item, demand_id=demand_id)
     matches = []
     for dem in demand_rows:
-        inv_rows = _fetch_inventory(conn, food_item=dem["food_item"], exclude_owner_id=None)
+        # A pair must represent two genuinely different parties - an
+        # organisation cannot be recommended a match against its own listing.
+        inv_rows = _fetch_inventory(conn, food_item=dem["food_item"], exclude_owner_id=dem["requester_id"])
         for inv in inv_rows:
             if disabled_owner and inv["owner_id"] == disabled_owner:
                 continue
@@ -220,6 +222,8 @@ def rank_destinations_for_inventory(conn, inventory_id, top_n=3):
     demand_rows = _fetch_demand(conn, food_item=inv["food_item"])
     ranked = []
     for dem in demand_rows:
+        if dem["requester_id"] == inv["owner_id"]:
+            continue
         if (inv["id"], dem["id"]) in rejected:
             continue
         ranked.append(_score_pair(conn, inv, dem, sim_now, delayed_location))

@@ -10,12 +10,30 @@ Built for the Millbrook local food network: 5 producers, 2 distributors, 2 schoo
 community kitchen, 2 markets, several households and a small business, all sharing one
 database, one matching engine, and one set of live metrics.
 
+**Entry experience (Iteration 1):** the app now opens onto three large choices — **I Have
+Food** (farmer/producer/supplier), **I Need Food** (school/kitchen/market/household/small
+business), **I Move Food** (distributor) — instead of a wall of role cards. Each world gets
+its own small nav and its own genuinely different home dashboard (see "The three worlds"
+below). The original 9-tab dashboard still exists in full and is one click away via
+**"Explore full network"**, and all simulation/what-if controls live behind a discreet
+**Demo Controls** panel rather than sitting in the main view.
+
 ---
 
 ## Quick start
 
 **Requirements:** Python 3.10+ and Node 18+ (this repo was built and tested with Python 3.12
 and Node 26). A virtualenv for the backend is already set up at `backend/venv`.
+
+### One-command start
+
+```bash
+./run.sh
+```
+
+Starts backend (`:8000`) and frontend (`:5173`) together, prints both URLs, and stops both
+cleanly on Ctrl+C. Requires the one-time setup below to have been done at least once
+(venv created, `pip install`, `npm install`).
 
 ### 1. Backend (FastAPI + SQLite), from `foodflow/backend/`
 
@@ -83,9 +101,12 @@ foodflow/
       simulation.py            simulation clock + What If? scenario engine
   frontend/
     src/
-      pages/                  one page per nav section (Overview, LocalFood, Supply, ...)
-      components/            Sidebar, TopBar, MatchCard, FoodCard, RiskBadge, DemoGuide, ...
-      context/AppContext.jsx  current user/role, simulation state, a refresh signal
+      pages/homes/            Home.jsx (dispatcher) + ProducerHome/DemanderHome/DistributorHome
+      pages/                  legacy full-nav pages (Overview, LocalFood, Supply, ...),
+                                reused by both the new role nav and the old sidebar
+      components/            RoleLayout/RoleTopBar/DemoControls (new) +
+                               Sidebar/TopBar/AppLayout (legacy), MatchCard, FoodCard, ...
+      context/AppContext.jsx  current user/role, WORLDS/WORLD_NAV/ACTION_LABELS, sim state
       services/api.js         the only place that talks to the backend
 ```
 
@@ -93,6 +114,31 @@ foodflow/
 raw `sqlite3` with named-column rows, plain `fetch` calls, and React context. Small enough
 that a beginner can open `main.py` and `matching.py` and understand the whole system in one
 sitting, per the brief's "simplicity of architecture" priority.
+
+### The three worlds
+
+Every seeded role sits in exactly one "world" (`context/AppContext.jsx` → `WORLD_ROLES`):
+
+| World | Roles | Home headline | Small nav |
+|---|---|---|---|
+| Producer | farmer, producer, supplier | "Your food. Your nearby demand." | Home · My Food · Find Demand · Distribution |
+| Demander | school, kitchen, market, household, business | "Your needs. Supplied nearby." | Home · My Needs · Find Food · My Inventory |
+| Distributor | distributor | "Move food where it matters." | Home · Available Moves · My Moves · Network |
+
+Each world's Home (`pages/homes/`) is a genuinely separate component answering the same
+four questions — *what do I have/need, what's urgent, what did FoodFlow find, what can I do
+now* — with different data and different language, not one template with a swapped heading.
+Secondary nav items reuse the existing pages (`Supply`, `Demand`, `LocalFood`,
+`SmartMatches`, `MapView`) wherever that page already fits the role's need; only
+`ProducerDistribution`, `DemanderInventory`, and `DistributorMoves` are new, and all three
+are thin views over the existing API. A distributor's "My Moves" has no backend concept of
+its own (no schema change) — accepting a delivery calls the same accept-allocation endpoint
+a producer or demander would use, just recorded to that browser's session so the distributor
+can see what they personally moved.
+
+The match/allocation action button's wording also follows the viewer's world
+(`ACTION_LABELS`): a producer sees "Accept allocation", a demander sees "Request supply", a
+distributor sees "Accept delivery" — same endpoint, human-appropriate verb.
 
 ### The matching engine
 
@@ -111,7 +157,9 @@ item of the same food type:
 Each factor is a plain, commented function (`score_urgency`, `score_shelf_life`, etc.) —
 no ML, nothing hidden. The weights live in one `WEIGHTS` dict at the top of the file, so
 they're trivial to retune. `explain_match()` turns the same numbers used for scoring into
-the bullet list shown behind **"Why this match?"** in the UI.
+the bullet list shown behind **"Why this match?"** in the UI. A pair is only ever generated
+between two different organisations — `compute_matches` and `rank_destinations_for_inventory`
+both exclude a demand row from matching against inventory owned by that same requester.
 
 ### The waste engine
 
